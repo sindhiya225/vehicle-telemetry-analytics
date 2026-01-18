@@ -1,0 +1,104 @@
+# Kafka Dockerfile for Vehicle Telemetry Analytics
+# Multi-stage build for optimized image
+
+# Stage 1: Builder
+FROM eclipse-temurin:17-jdk-alpine as builder
+
+ARG KAFKA_VERSION=3.6.0
+ARG SCALA_VERSION=2.13
+ARG MIRROR=https://downloads.apache.org
+
+WORKDIR /tmp
+
+# Download and extract Kafka
+RUN apk add --no-cache wget tar gzip && \
+    wget -q "${MIRROR}/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz" && \
+    tar -xzf "kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz" && \
+    mv "kafka_${SCALA_VERSION}-${KAFKA_VERSION}" /opt/kafka
+
+# Download Kafka Connect plugins
+RUN mkdir -p /opt/kafka/connectors && \
+    wget -q -P /opt/kafka/connectors https://github.com/confluentinc/kafka-connect-jdbc/releases/download/v10.7.0/confluentinc-kafka-connect-jdbc-10.7.0.zip && \
+    unzip /opt/kafka/connectors/confluentinc-kafka-connect-jdbc-10.7.0.zip -d /opt/kafka/connectors/ && \
+    wget -q -P /opt/kafka/connectors https://github.com/confluentinc/kafka-connect-elasticsearch/releases/download/v14.0.5/confluentinc-kafka-connect-elasticsearch-14.0.5.zip && \
+    unzip /opt/kafka/connectors/confluentinc-kafka-connect-elasticsearch-14.0.5.zip -d /opt/kafka/connectors/
+
+# Stage 2: Runtime
+FROM eclipse-temurin:17-jre-alpine
+
+LABEL maintainer="Vehicle Telemetry Analytics Team"
+LABEL description="Apache Kafka for Vehicle Telemetry Streaming"
+LABEL version="3.6.0"
+
+# Install necessary packages
+RUN apk add --no-cache \
+    bash \
+    curl \
+    jq \
+    python3 \
+    py3-pip \
+    supervisor \
+    openssl \
+    tzdata && \
+    pip3 install --no-cache-dir kafka-python confluent-kafka avro-python3 && \
+    rm -rf /var/cache/apk/*
+
+# Create directories
+RUN mkdir -p \
+    /opt/kafka \
+    /opt/kafka/data \
+    /opt/kafka/logs \
+    /opt/kafka/connectors \
+    /etc/supervisor.d \
+    /etc/kafka \
+    /scripts
+
+# Copy Kafka from builder stage
+COPY --from=builder /opt/kafka /opt/kafka
+
+# Copy configuration files
+COPY config/server.properties /etc/kafka/server.properties
+COPY config/zookeeper.properties /etc/kafka/zookeeper.properties
+COPY config/log4j.properties /etc/kafka/log4j.properties
+COPY config/connect-distributed.properties /etc/kafka/connect-distributed.properties
+
+# Copy scripts
+COPY scripts/start-kafka.sh /scripts/start-kafka.sh
+COPY scripts/health-check.sh /scripts/health-check.sh
+COPY scripts/create-topics.sh /scripts/create-topics.sh
+COPY scripts/configure-connect.sh /scripts/configure-connect.sh
+
+# Copy supervisor config
+COPY config/supervisord.conf /etc/supervisor.d/kafka.conf
+
+# Set environment variables
+ENV KAFKA_HOME=/opt/kafka
+ENV KAFKA_VERSION=3.6.0
+ENV SCALA_VERSION=2.13
+ENV KAFKA_HEAP_OPTS="-Xmx2G -Xms2G"
+ENV KAFKA_JVM_PERFORMANCE_OPTS="-XX:+UseG1GC -XX:MaxGCPauseMillis=20 -XX:InitiatingHeapOccupancyPercent=35 -XX:+ExplicitGCInvokesConcurrent -Djava.awt.headless=true"
+ENV KAFKA_GC_LOG_OPTS="-Xlog:gc*:file=/opt/kafka/logs/kafka-gc.log:time,tags:filecount=10,filesize=100M"
+ENV KAFKA_OPTS="-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+ENV PATH="${KAFKA_HOME}/bin:${PATH}"
+
+# Create a non-root user
+RUN addgroup -S kafka && \
+    adduser -S kafka -G kafka && \
+    chown -R kafka:kafka /opt/kafka /etc/kafka /scripts && \
+    chmod +x /scripts/*.sh
+
+# Expose ports
+EXPOSE 9092 9093 9094 8083 8088 29092
+
+# Switch to non-root user
+USER kafka
+
+# Set working directory
+WORKDIR /opt/kafka
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5m --retries=3 \
+    CMD /scripts/health-check.sh
+
+# Default command
+CMD ["/scripts/start-kafka.sh"]

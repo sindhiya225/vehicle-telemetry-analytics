@@ -1,0 +1,40 @@
+groups:
+  - name: vehicle_telemetry_recording_rules
+    interval: 30s
+    rules:
+      # Vehicle telemetry aggregation rules
+      - record: vehicle_speed:avg_5m
+        expr: avg_over_time(vehicle_speed[5m])
+      
+      - record: vehicle_speed:max_5m
+        expr: max_over_time(vehicle_speed[5m])
+      
+      - record: engine_temperature:avg_5m
+        expr: avg_over_time(engine_temperature[5m])
+      
+      - record: fuel_efficiency:avg_1h
+        expr: avg_over_time(fuel_efficiency[1h])
+      
+      - record: vehicle_faults:total_1h
+        expr: sum(increase(fault_count[1h]))
+      
+      # Spark performance rules
+      - record: spark_memory_utilization:ratio
+        expr: spark_driver_BlockManager_memory_memUsed_MB / spark_driver_BlockManager_memory_maxMem_MB
+      
+      - record: spark_job_completion:rate_5m
+        expr: rate(spark_driver_DAGSch_ui_jobs_nCompletedJobs[5m])
+      
+      # Kafka performance rules
+      - record: kafka_message_rate:in_5m
+        expr: rate(kafka_server_brokertopicmetrics_bytesin_total[5m])
+      
+      - record: kafka_message_rate:out_5m
+        expr: rate(kafka_server_brokertopicmetrics_bytesout_total[5m])
+      
+      # System resource rules
+      - record: node_cpu_utilization:avg_5m
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+      
+      - record: node_memory_utilization:ratio
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes

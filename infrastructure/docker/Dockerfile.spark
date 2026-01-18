@@ -1,0 +1,148 @@
+# Spark Dockerfile for Vehicle Telemetry Analytics
+# Multi-stage build for optimized image
+
+# Stage 1: Builder
+FROM eclipse-temurin:17-jdk-alpine as builder
+
+ARG SPARK_VERSION=3.5.0
+ARG HADOOP_VERSION=3
+ARG PYTHON_VERSION=3.10
+
+WORKDIR /tmp
+
+# Install build dependencies
+RUN apk add --no-cache \
+    wget \
+    tar \
+    gzip \
+    bash \
+    curl \
+    python3=${PYTHON_VERSION} \
+    py3-pip \
+    build-base \
+    python3-dev \
+    openblas-dev \
+    && pip3 install --upgrade pip
+
+# Download Spark
+RUN wget -q "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" && \
+    tar -xzf "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz" && \
+    mv "spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}" /opt/spark
+
+# Install Python dependencies for Spark
+RUN pip3 install --no-cache-dir \
+    pyspark==${SPARK_VERSION} \
+    pandas \
+    numpy \
+    scikit-learn \
+    matplotlib \
+    seaborn \
+    plotly \
+    kafka-python \
+    confluent-kafka \
+    avro-python3 \
+    delta-spark \
+    psycopg2-binary \
+    sqlalchemy \
+    jupyter \
+    notebook
+
+# Stage 2: Runtime
+FROM eclipse-temurin:17-jre-alpine
+
+LABEL maintainer="Vehicle Telemetry Analytics Team"
+LABEL description="Apache Spark for Vehicle Telemetry Analytics"
+LABEL version="3.5.0"
+
+ARG SPARK_VERSION=3.5.0
+ARG PYTHON_VERSION=3.10
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    bash \
+    curl \
+    python3=${PYTHON_VERSION} \
+    py3-pip \
+    libc6-compat \
+    openblas \
+    tzdata \
+    procps \
+    netcat-openbsd \
+    && ln -s /lib/libc.musl-x86_64.so.1 /lib/ld-linux-x86-64.so.2 \
+    && rm -rf /var/cache/apk/*
+
+# Copy Spark from builder stage
+COPY --from=builder /opt/spark /opt/spark
+
+# Copy Python dependencies
+COPY --from=builder /usr/lib/python${PYTHON_VERSION%.*}/site-packages /usr/lib/python${PYTHON_VERSION%.*}/site-packages
+COPY --from=builder /usr/bin/python${PYTHON_VERSION%.*} /usr/bin/python${PYTHON_VERSION%.*}
+
+# Create directories
+RUN mkdir -p \
+    /opt/spark/work-dir \
+    /opt/spark/logs \
+    /opt/spark/jars \
+    /opt/spark/conf \
+    /opt/spark/checkpoints \
+    /opt/spark/data \
+    /scripts
+
+# Copy configuration files
+COPY config/spark-defaults.conf /opt/spark/conf/spark-defaults.conf
+COPY config/spark-env.sh /opt/spark/conf/spark-env.sh
+COPY config/log4j2.properties /opt/spark/conf/log4j2.properties
+COPY config/metrics.properties /opt/spark/conf/metrics.properties
+
+# Copy scripts
+COPY scripts/start-spark.sh /scripts/start-spark.sh
+COPY scripts/start-worker.sh /scripts/start-worker.sh
+COPY scripts/start-master.sh /scripts/start-master.sh
+COPY scripts/health-check.sh /scripts/health-check.sh
+COPY scripts/submit-job.sh /scripts/submit-job.sh
+
+# Copy JARs for additional connectors
+COPY jars/* /opt/spark/jars/
+
+# Set environment variables
+ENV SPARK_HOME=/opt/spark
+ENV SPARK_VERSION=${SPARK_VERSION}
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
+ENV PATH="${SPARK_HOME}/bin:${PATH}"
+ENV SPARK_NO_DAEMONIZE=1
+ENV SPARK_MASTER_PORT=7077
+ENV SPARK_MASTER_WEBUI_PORT=8080
+ENV SPARK_WORKER_WEBUI_PORT=8081
+ENV SPARK_WORKER_PORT=7078
+
+# Download additional JARs for Kafka and Delta Lake
+RUN cd /opt/spark/jars && \
+    wget -q "https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.13/${SPARK_VERSION}/spark-sql-kafka-0-10_2.13-${SPARK_VERSION}.jar" && \
+    wget -q "https://repo1.maven.org/maven2/org/apache/spark/spark-streaming-kafka-0-10-assembly_2.13/${SPARK_VERSION}/spark-streaming-kafka-0-10-assembly_2.13-${SPARK_VERSION}.jar" && \
+    wget -q "https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.13/${SPARK_VERSION}/spark-token-provider-kafka-0-10_2.13-${SPARK_VERSION}.jar" && \
+    wget -q "https://repo1.maven.org/maven2/io/delta/delta-core_2.13/2.4.0/delta-core_2.13-2.4.0.jar" && \
+    wget -q "https://repo1.maven.org/maven2/io/delta/delta-storage/2.4.0/delta-storage-2.4.0.jar" && \
+    wget -q "https://repo1.maven.org/maven2/org/apache/spark/spark-avro_2.13/${SPARK_VERSION}/spark-avro_2.13-${SPARK_VERSION}.jar"
+
+# Create a non-root user
+RUN addgroup -S spark && \
+    adduser -S spark -G spark && \
+    chown -R spark:spark /opt/spark /scripts && \
+    chmod +x /scripts/*.sh
+
+# Expose ports
+EXPOSE 7077 8080 8081 4040 18080
+
+# Switch to non-root user
+USER spark
+
+# Set working directory
+WORKDIR /opt/spark/work-dir
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=2m --retries=3 \
+    CMD /scripts/health-check.sh
+
+# Default command
+CMD ["/scripts/start-spark.sh"]

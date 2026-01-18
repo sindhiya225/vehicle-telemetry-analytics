@@ -1,0 +1,124 @@
+# Kafka Configuration for Vehicle Telemetry
+kafka:
+  bootstrap_servers: "localhost:9093"
+  schema_registry_url: "http://localhost:8081"
+  
+  topics:
+    raw_telemetry: "vehicle.raw.telemetry"
+    processed_telemetry: "vehicle.processed.telemetry"
+    anomalies: "vehicle.anomalies"
+    maintenance_alerts: "vehicle.maintenance.alerts"
+    efficiency_metrics: "vehicle.efficiency.metrics"
+    driver_behavior: "vehicle.driver.behavior"
+    cost_analytics: "vehicle.cost.analytics"
+  
+  consumer_groups:
+    spark_streaming: "spark-streaming-group"
+    realtime_dashboard: "dashboard-consumer-group"
+    anomaly_detector: "anomaly-detector-group"
+  
+  partitions: 6
+  replication_factor: 1
+  
+  retention:
+    hours: 168
+    bytes: 1073741824
+  
+  compression: "snappy"
+  
+avro_schemas:
+  telemetry_event:
+    type: record
+    name: TelemetryEvent
+    namespace: com.vehicle.telemetry
+    fields:
+      - name: event_id
+        type: string
+      - name: timestamp
+        type: long
+      - name: vehid
+        type: int
+      - name: vehicle_type
+        type: string
+      - name: vehicle_class
+        type: string
+      - name: trip_id
+        type: string
+      - name: trip_distance_km
+        type: double
+      - name: fuel_consumed_l
+        type: double
+      - name: fuel_efficiency_kmpl
+        type: double
+      - name: avg_speed_kmph
+        type: double
+      - name: avg_rpm
+        type: int
+      - name: avg_engine_temp_c
+        type: double
+      - name: idle_time_min
+        type: double
+      - name: has_fault
+        type: boolean
+      - name: fault_codes
+        type: [string, "null"]
+      - name: maintenance_flag
+        type: boolean
+      - name: weather_condition
+        type: string
+      - name: road_type
+        type: string
+      - name: driver_behavior_score
+        type: double
+      - name: location_lat
+        type: [double, "null"]
+      - name: location_lon
+        type: [double, "null"]
+      - name: altitude
+        type: [double, "null"]
+  
+  anomaly_event:
+    type: record
+    name: AnomalyEvent
+    namespace: com.vehicle.telemetry
+    fields:
+      - name: anomaly_id
+        type: string
+      - name: timestamp
+        type: long
+      - name: vehid
+        type: int
+      - name: anomaly_type
+        type: string
+      - name: severity
+        type: string
+      - name: score
+        type: double
+      - name: features
+        type: 
+          type: map
+          values: double
+      - name: description
+        type: string
+  
+  maintenance_alert:
+    type: record
+    name: MaintenanceAlert
+    namespace: com.vehicle.telemetry
+    fields:
+      - name: alert_id
+        type: string
+      - name: timestamp
+        type: long
+      - name: vehid
+        type: int
+      - name: alert_type
+        type: string
+      - name: priority
+        type: string
+      - name: description
+        type: string
+      - name: recommended_action
+        type: string
+      - name: estimated_cost
+        type: double

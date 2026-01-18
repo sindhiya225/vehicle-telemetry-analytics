@@ -1,0 +1,80 @@
+<!-- dashboard/tableau/vehicle_analytics.twb -->
+<?xml version='1.0' encoding='utf-8' ?>
+<workbook xmlns:user="http://www.tableausoftware.com/xml/user" 
+          xmlns="http://tableausoftware.com/api" 
+          version="2022.1">
+  
+  <!-- Data Sources -->
+  <datasources>
+    <datasource name="VehicleTelemetry" caption="Vehicle Telemetry Data" inline="true">
+      <connection class="postgres" dbname="vehicle_telemetry" server="localhost" port="5432" username="postgres">
+        <relation name="vehicle_telemetry" type="table">
+          <connection class="postgres" dbname="vehicle_telemetry" server="localhost" port="5432" username="postgres" />
+        </relation>
+      </connection>
+    </datasource>
+  </datasources>
+  
+  <!-- Worksheets -->
+  <worksheets>
+    <worksheet name="Efficiency Analysis">
+      <table>
+        <view>
+          <datasource name="VehicleTelemetry" />
+          <fields>
+            <field name="vehicle_type" role="dimension" />
+            <field name="fuel_efficiency_kmpl" role="measure" />
+            <field name="trip_distance_km" role="measure" />
+          </fields>
+        </view>
+      </table>
+    </worksheet>
+    
+    <worksheet name="Maintenance Dashboard">
+      <table>
+        <view>
+          <datasource name="VehicleTelemetry" />
+          <fields>
+            <field name="vehid" role="dimension" />
+            <field name="fault_count" role="measure" />
+            <field name="maintenance_flag" role="dimension" />
+          </fields>
+        </view>
+      </table>
+    </worksheet>
+    
+    <worksheet name="Cost Analysis">
+      <table>
+        <view>
+          <datasource name="VehicleTelemetry" />
+          <fields>
+            <field name="vehicle_class" role="dimension" />
+            <field name="total_cost" role="measure" />
+            <field name="fuel_cost" role="measure" />
+          </fields>
+        </view>
+      </table>
+    </worksheet>
+  </worksheets>
+  
+  <!-- Dashboards -->
+  <dashboards>
+    <dashboard name="Executive Dashboard">
+      <layout type="tiled" />
+      <zones>
+        <zone name="KPI Summary" type="text">
+          <text>Vehicle Telemetry Analytics Dashboard</text>
+        </zone>
+        <zone name="Efficiency Chart" type="worksheet">
+          <worksheet name="Efficiency Analysis" />
+        </zone>
+        <zone name="Maintenance View" type="worksheet">
+          <worksheet name="Maintenance Dashboard" />
+        </zone>
+        <zone name="Cost View" type="worksheet">
+          <worksheet name="Cost Analysis" />
+        </zone>
+      </zones>
+    </dashboard>
+  </dashboards>
+</workbook>

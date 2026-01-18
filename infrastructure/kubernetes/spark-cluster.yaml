@@ -1,0 +1,163 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spark-config
+  namespace: vehicle-analytics
+data:
+  spark-defaults.conf: |
+    spark.master                     k8s://https://kubernetes.default.svc
+    spark.submit.deployMode          cluster
+    spark.kubernetes.container.image apache/spark:3.4.1
+    spark.kubernetes.namespace       vehicle-analytics
+    spark.kubernetes.driver.pod.name spark-driver
+    spark.eventLog.enabled           true
+    spark.eventLog.dir               hdfs://hadoop-hdfs-namenode:9000/spark-events
+    spark.history.fs.logDirectory    hdfs://hadoop-hdfs-namenode:9000/spark-events
+    spark.sql.adaptive.enabled       true
+    spark.sql.adaptive.coalescePartitions.enabled true
+    spark.executor.instances         3
+    spark.executor.cores             2
+    spark.executor.memory            2g
+    spark.driver.cores               1
+    spark.driver.memory              1g
+    spark.kubernetes.authenticate.driver.serviceAccountName spark
+    spark.kubernetes.driver.volumes.hostPath.checkpoint.mount.path /checkpoint
+    spark.kubernetes.driver.volumes.hostPath.checkpoint.mount.readOnly false
+    spark.kubernetes.driver.volumes.hostPath.checkpoint.options.path /tmp/spark-checkpoint
+    spark.kubernetes.executor.volumes.hostPath.checkpoint.mount.path /checkpoint
+    spark.kubernetes.executor.volumes.hostPath.checkpoint.mount.readOnly false
+    spark.kubernetes.executor.volumes.hostPath.checkpoint.options.path /tmp/spark-checkpoint
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: vehicle-analytics
+  name: spark-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  namespace: vehicle-analytics
+  name: spark-role-binding
+subjects:
+- kind: ServiceAccount
+  name: spark
+  namespace: vehicle-analytics
+roleRef:
+  kind: Role
+  name: spark-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spark
+  namespace: vehicle-analytics
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-driver
+  namespace: vehicle-analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-driver
+  template:
+    metadata:
+      labels:
+        app: spark-driver
+    spec:
+      serviceAccountName: spark
+      containers:
+      - name: spark-driver
+        image: apache/spark:3.4.1
+        command: ["/opt/spark/bin/spark-class"]
+        args: ["org.apache.spark.deploy.master.Master"]
+        ports:
+        - containerPort: 7077
+          name: spark-master
+        - containerPort: 8080
+          name: spark-ui
+        env:
+        - name: SPARK_MASTER_HOST
+          value: "spark-driver"
+        - name: SPARK_MASTER_PORT
+          value: "7077"
+        - name: SPARK_MASTER_WEBUI_PORT
+          value: "8080"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-master
+  namespace: vehicle-analytics
+spec:
+  ports:
+  - port: 7077
+    targetPort: 7077
+    name: spark-master
+  - port: 8080
+    targetPort: 8080
+    name: spark-ui
+  selector:
+    app: spark-driver
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-worker
+  namespace: vehicle-analytics
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: spark-worker
+  template:
+    metadata:
+      labels:
+        app: spark-worker
+    spec:
+      serviceAccountName: spark
+      containers:
+      - name: spark-worker
+        image: apache/spark:3.4.1
+        command: ["/opt/spark/bin/spark-class"]
+        args: ["org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+        env:
+        - name: SPARK_WORKER_CORES
+          value: "2"
+        - name: SPARK_WORKER_MEMORY
+          value: "2g"
+        - name: SPARK_WORKER_WEBUI_PORT
+          value: "8081"
+        ports:
+        - containerPort: 8081
+          name: worker-ui
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: spark-checkpoint
+          mountPath: /tmp/spark-checkpoint
+      volumes:
+      - name: spark-checkpoint
+        hostPath:
+          path: /tmp/spark-checkpoint
+          type: DirectoryOrCreate

@@ -1,0 +1,77 @@
+apiVersion: 1
+
+# List of datasources to insert/update
+datasources:
+  # Prometheus datasource
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: 15s
+      queryTimeout: 60s
+      httpMethod: POST
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.45.0
+      cacheLevel: "High"
+      incrementalQueryOverlapWindow: "10m"
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          url: '${__value.raw}'
+      customQueryParameters: "max_source_resolution=auto"
+    secureJsonData:
+      tlsSkipVerify: true
+    
+  # Loki datasource for logs (optional but recommended)
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: 'tempo'
+          matcherRegex: 'traceID=(\w+)'
+          name: 'TraceID'
+          url: '$${__value.raw}'
+    
+  # Tempo datasource for tracing (optional)
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      httpMethod: GET
+      tracesToLogs:
+        datasourceUid: 'Loki'
+        filterBySpanID: false
+        filterByTraceID: true
+        mapTagNamesEnabled: false
+        tags:
+          - container
+          - pod
+      tracesToMetrics:
+        datasourceUid: 'Prometheus'
+        queries:
+          - name: 'Request rate'
+            query: 'sum(rate(traces_spanmetrics_latency_bucket{service="${serviceName}"}[5m]))'
+      serviceMap:
+        datasourceUid: 'Prometheus'
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+      lokiSearch:
+        datasourceUid: 'Loki'
+    
+  # Alertmanager datasource
+  - name: Alertmanager
+    type: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    jsonData:
+      implementation: prometheus
+      handleGrafanaManagedAlerts: true

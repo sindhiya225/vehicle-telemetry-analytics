@@ -1,0 +1,272 @@
+groups:
+  - name: vehicle-telemetry-alerts
+    rules:
+      # Engine Temperature Alerts
+      - alert: HighEngineTemperature
+        expr: engine_temperature > 120
+        for: 5m
+        labels:
+          severity: critical
+          component: engine
+          team: vehicle-ops
+        annotations:
+          summary: "High engine temperature detected"
+          description: "Vehicle {{ $labels.vehicle_id }} engine temperature is {{ $value }}°C (threshold: 120°C)"
+          runbook_url: "https://wiki.example.com/runbooks/high-engine-temperature"
+          dashboard: "Vehicle Telemetry Dashboard"
+          
+      - alert: CriticalEngineTemperature
+        expr: engine_temperature > 140
+        for: 2m
+        labels:
+          severity: emergency
+          component: engine
+          team: vehicle-ops
+        annotations:
+          summary: "CRITICAL: Engine overheating"
+          description: "Vehicle {{ $labels.vehicle_id }} engine temperature is critically high at {{ $value }}°C"
+          
+      # Fuel Level Alerts
+      - alert: LowFuelLevel
+        expr: fuel_level < 15
+        for: 10m
+        labels:
+          severity: warning
+          component: fuel
+          team: vehicle-ops
+        annotations:
+          summary: "Low fuel level"
+          description: "Vehicle {{ $labels.vehicle_id }} fuel level is {{ $value }}%"
+          
+      - alert: CriticalFuelLevel
+        expr: fuel_level < 5
+        for: 5m
+        labels:
+          severity: critical
+          component: fuel
+          team: vehicle-ops
+        annotations:
+          summary: "CRITICAL: Very low fuel"
+          description: "Vehicle {{ $labels.vehicle_id }} fuel level is critically low at {{ $value }}%"
+          
+      # Battery Voltage Alerts
+      - alert: LowBatteryVoltage
+        expr: battery_voltage < 12.0
+        for: 5m
+        labels:
+          severity: warning
+          component: electrical
+          team: vehicle-ops
+        annotations:
+          summary: "Low battery voltage"
+          description: "Vehicle {{ $labels.vehicle_id }} battery voltage is {{ $value }}V"
+          
+      - alert: CriticalBatteryVoltage
+        expr: battery_voltage < 11.0
+        for: 2m
+        labels:
+          severity: critical
+          component: electrical
+          team: vehicle-ops
+        annotations:
+          summary: "CRITICAL: Very low battery voltage"
+          description: "Vehicle {{ $labels.vehicle_id }} battery voltage is critically low at {{ $value }}V"
+          
+      # Oil Pressure Alerts
+      - alert: LowOilPressure
+        expr: oil_pressure < 150
+        for: 3m
+        labels:
+          severity: warning
+          component: lubrication
+          team: vehicle-ops
+        annotations:
+          summary: "Low oil pressure"
+          description: "Vehicle {{ $labels.vehicle_id }} oil pressure is {{ $value }}kPa"
+          
+      - alert: CriticalOilPressure
+        expr: oil_pressure < 100
+        for: 1m
+        labels:
+          severity: critical
+          component: lubrication
+          team: vehicle-ops
+        annotations:
+          summary: "CRITICAL: Very low oil pressure"
+          description: "Vehicle {{ $labels.vehicle_id }} oil pressure is critically low at {{ $value }}kPa"
+          
+      # Fault Monitoring
+      - alert: HighFaultRate
+        expr: rate(fault_count[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: diagnostics
+          team: vehicle-ops
+        annotations:
+          summary: "High fault rate detected"
+          description: "Vehicle {{ $labels.vehicle_id }} is generating faults at rate {{ $value }}/second"
+          
+      - alert: MultipleCriticalFaults
+        expr: fault_count > 5
+        for: 1m
+        labels:
+          severity: critical
+          component: diagnostics
+          team: vehicle-ops
+        annotations:
+          summary: "Multiple critical faults detected"
+          description: "Vehicle {{ $labels.vehicle_id }} has {{ $value }} active faults"
+          
+      # Fuel Efficiency Alerts
+      - alert: PoorFuelEfficiency
+        expr: fuel_efficiency < 8
+        for: 30m
+        labels:
+          severity: warning
+          component: performance
+          team: vehicle-ops
+        annotations:
+          summary: "Poor fuel efficiency"
+          description: "Vehicle {{ $labels.vehicle_id }} fuel efficiency is {{ $value }} km/L"
+          
+  - name: spark-cluster-alerts
+    rules:
+      # Spark Cluster Health Alerts
+      - alert: SparkDriverDown
+        expr: up{job="spark-metrics"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: spark
+          team: data-engineering
+        annotations:
+          summary: "Spark Driver is down"
+          description: "Spark driver for {{ $labels.instance }} is not responding"
+          
+      - alert: HighSparkMemoryUsage
+        expr: spark_memory_used / spark_memory_total > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          component: spark
+          team: data-engineering
+        annotations:
+          summary: "High Spark memory usage"
+          description: "Spark memory usage is {{ $value | humanizePercentage }}"
+          
+      - alert: SparkJobFailed
+        expr: increase(spark_jobs_failed_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: spark
+          team: data-engineering
+        annotations:
+          summary: "Spark job failed"
+          description: "Spark job {{ $labels.job_name }} failed on {{ $labels.instance }}"
+          
+      - alert: SparkApplicationHung
+        expr: spark_tasks_running == 0 and spark_jobs_active > 0
+        for: 10m
+        labels:
+          severity: warning
+          component: spark
+          team: data-engineering
+        annotations:
+          summary: "Spark application appears hung"
+          description: "Application {{ $labels.application_id }} has active jobs but no running tasks"
+          
+  - name: kafka-cluster-alerts
+    rules:
+      # Kafka Cluster Health Alerts
+      - alert: KafkaBrokerDown
+        expr: kafka_server_kafkaserver_brokerstate != 3
+        for: 1m
+        labels:
+          severity: critical
+          component: kafka
+          team: data-engineering
+        annotations:
+          summary: "Kafka broker is down"
+          description: "Kafka broker {{ $labels.instance }} is not running as leader/follower"
+          
+      - alert: HighKafkaLag
+        expr: kafka_consumer_group_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+          component: kafka
+          team: data-engineering
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer group {{ $labels.group }} has lag of {{ $value }} messages on topic {{ $labels.topic }}"
+          
+      - alert: KafkaUnderReplicatedPartitions
+        expr: kafka_cluster_partition_underreplicated > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: kafka
+          team: data-engineering
+        annotations:
+          summary: "Kafka under-replicated partitions"
+          description: "{{ $value }} partitions are under-replicated"
+          
+      - alert: KafkaDiskUsageHigh
+        expr: kafka_log_log_size / kafka_log_log_size_capacity > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: kafka
+          team: data-engineering
+        annotations:
+          summary: "High Kafka disk usage"
+          description: "Kafka disk usage is {{ $value | humanizePercentage }} on {{ $labels.instance }}"
+          
+  - name: infrastructure-alerts
+    rules:
+      # Node/System Alerts
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+          team: platform
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage on {{ $labels.instance }} is {{ $value }}%"
+          
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+          team: platform
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage on {{ $labels.instance }} is {{ $value }}%"
+          
+      - alert: HighDiskUsage
+        expr: (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"})) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+          team: platform
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage on {{ $labels.mountpoint }} is {{ $value }}%"
+          
+      - alert: NodeDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: infrastructure
+          team: platform
+        annotations:
+          summary: "Node is down"
+          description: "{{ $labels.instance }} is not responding"
